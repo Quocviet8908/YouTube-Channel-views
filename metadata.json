@@ -1,0 +1,5 @@
+{
+  "name": "YouTube Channel Viewer",
+  "description": "An application to display YouTube videos from a specific channel ID. The admin can customize the appearance of the video titles and descriptions.",
+  "requestFramePermissions": []
+}
