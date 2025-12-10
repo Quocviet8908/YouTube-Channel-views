@@ -11,7 +11,6 @@ interface MainPageProps {
   isLoading: boolean;
   isLoadingMore: boolean;
   error: string | null;
-  onNavigateToLogin: () => void;
   onLoadMore: () => void;
   hasNextPage: boolean;
 }
@@ -23,7 +22,6 @@ const MainPage: React.FC<MainPageProps> = ({
   isLoading, 
   isLoadingMore,
   error, 
-  onNavigateToLogin,
   onLoadMore,
   hasNextPage
 }) => {
@@ -69,12 +67,6 @@ const MainPage: React.FC<MainPageProps> = ({
         <div className="aspect-[3/1] w-full bg-gray-800 rounded-lg overflow-hidden">
           <img src={bannerImageUrl} alt="Channel banner" className="w-full h-full object-cover"/>
         </div>
-        <button
-          onClick={onNavigateToLogin}
-          className="absolute top-4 right-4 bg-gray-900/50 hover:bg-gray-900/80 text-white text-xs font-bold py-2 px-3 rounded-md transition-colors backdrop-blur-sm"
-        >
-          Admin Login
-        </button>
       </header>
       
       {isLoading ? (

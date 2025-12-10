@@ -1,33 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import MainPage from './components/MainPage';
-import AdminPage from './components/AdminPage';
-import LoginPage from './components/LoginPage';
 import { YouTubeVideo, AppSettings, YouTubePlaylist } from './types';
 import { getVideosByChannelId, getPlaylistsByChannelId } from './services/youtubeService';
-
-type Location = 'main' | 'login' | 'admin';
-
-const DEFAULT_SETTINGS: AppSettings = {
-  channelId: 'UC-lHJZR3Gqxm24_Vd_AJ5Yw', // Google's channel
-  apiKey: '',
-  styleSettings: {
-    titleColor: 'text-white',
-    descriptionColor: 'text-gray-400',
-  },
-  bannerImageUrl: 'https://placehold.co/1200x400/1a202c/1a202c.png?text=+',
-  socialLinks: {
-    facebook: '',
-    twitter: '',
-    youtube: '',
-  },
-};
+import { getSettingsFromGoogleSheet } from './services/googleSheetService';
 
 const App: React.FC = () => {
-  const [location, setLocation] = useState<Location>('main');
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [playlists, setPlaylists] = useState<YouTubePlaylist[]>([]);
@@ -38,25 +16,32 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const savedSettings = localStorage.getItem('youtubeAppSettings');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      } else {
-        setSettings(DEFAULT_SETTINGS);
+    const fetchSettings = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const sheetSettings = await getSettingsFromGoogleSheet();
+        setSettings(sheetSettings);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+        setError(`Failed to load configuration from Google Sheet: ${errorMessage}`);
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to load settings from localStorage', err);
-      setSettings(DEFAULT_SETTINGS);
-    }
+    };
+    fetchSettings();
   }, []);
 
   const fetchInitialData = useCallback(async () => {
-    if (!settings.channelId) {
-      setVideos([]);
-      setPlaylists([]);
-      setIsLoading(false);
-      return;
+    if (!settings || !settings.channelId || !settings.apiKey) {
+        if(settings) { // if settings are loaded but incomplete
+            setError("Channel ID or API Key is missing in the Google Sheet configuration. Displaying sample data.");
+            const { videos: mockVideos } = await getVideosByChannelId('', '', 30);
+            const { playlists: mockPlaylists } = await getPlaylistsByChannelId('', '');
+            setVideos(mockVideos);
+            setPlaylists(mockPlaylists);
+        }
+        setIsLoading(false);
+        return;
     }
     
     setIsLoading(true);
@@ -74,10 +59,10 @@ const App: React.FC = () => {
     }
     
     setIsLoading(false);
-  }, [settings.channelId, settings.apiKey]);
+  }, [settings]);
   
   const handleLoadMore = useCallback(async () => {
-    if (!videoNextPageToken || isLoadingMore) return;
+    if (!videoNextPageToken || isLoadingMore || !settings) return;
 
     setIsLoadingMore(true);
     const { videos: newVideos, nextPageToken: newNextPageToken, error: fetchError } = await getVideosByChannelId(
@@ -93,80 +78,42 @@ const App: React.FC = () => {
         setVideoNextPageToken(newNextPageToken);
     }
     setIsLoadingMore(false);
-  }, [settings.channelId, settings.apiKey, videoNextPageToken, isLoadingMore]);
+  }, [settings, videoNextPageToken, isLoadingMore]);
 
 
   useEffect(() => {
-    if (location === 'main') {
+    if (settings) {
       fetchInitialData();
     }
-  }, [fetchInitialData, location]);
+  }, [fetchInitialData, settings]);
 
-  const handleLogin = (password: string) => {
-    if (password === '1234567890') {
-      setIsAuthenticated(true);
-      setLocation('admin');
-      setAuthError(null);
-    } else {
-      setAuthError('Incorrect password. Please try again.');
-    }
-  };
-  
-  const handleLogout = () => {
-      setIsAuthenticated(false);
-      setLocation('main');
-  };
-
-  const handleSaveSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings);
-    try {
-      localStorage.setItem('youtubeAppSettings', JSON.stringify(newSettings));
-    } catch (err) {
-      console.error('Failed to save settings to localStorage', err);
-    }
-    setLocation('main');
-  };
-
-  const renderContent = () => {
-    if (location === 'admin') {
-      if (isAuthenticated) {
-        return (
-          <AdminPage
-            currentSettings={settings}
-            onSave={handleSaveSettings}
-            onCancel={() => setLocation('main')}
-            onLogout={handleLogout}
-          />
-        );
-      }
-      // if not authenticated, redirect to login
-      setLocation('login');
-      return null;
-    }
-
-    if (location === 'login') {
-      return <LoginPage onLogin={handleLogin} error={authError} />;
-    }
-
-    return (
-      <MainPage
-        videos={videos}
-        playlists={playlists}
-        settings={settings}
-        isLoading={isLoading}
-        isLoadingMore={isLoadingMore}
-        error={error}
-        onNavigateToLogin={() => setLocation('login')}
-        onLoadMore={handleLoadMore}
-        hasNextPage={!!videoNextPageToken}
-      />
-    );
-  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white font-sans">
       <div className="container mx-auto p-4 md:p-8">
-        {renderContent()}
+        {settings && (
+            <MainPage
+                videos={videos}
+                playlists={playlists}
+                settings={settings}
+                isLoading={isLoading}
+                isLoadingMore={isLoadingMore}
+                error={error}
+                onLoadMore={handleLoadMore}
+                hasNextPage={!!videoNextPageToken}
+            />
+        )}
+        {!settings && isLoading && (
+            <div className="flex flex-col items-center justify-center h-96">
+                <p className="mt-4 text-gray-400">Loading Configuration...</p>
+            </div>
+        )}
+         {!settings && !isLoading && error && (
+            <div className="flex flex-col items-center justify-center text-center text-red-400 bg-red-900/20 rounded-lg p-6">
+                <p className="mt-4 font-semibold">Fatal Error</p>
+                <p className="text-red-300 mt-1 text-sm max-w-2xl">{error}</p>
+            </div>
+         )}
       </div>
     </div>
   );
